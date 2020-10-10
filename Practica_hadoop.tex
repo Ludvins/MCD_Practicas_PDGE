@@ -1,0 +1,115 @@
+% Created 2020-09-29 mar 13:20
+% Intended LaTeX compiler: pdflatex
+%%% Local Variables:
+%%% LaTeX-command: "pdflatex --shell-escape"
+%%% End:
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{grffile}
+\usepackage{longtable}
+\usepackage{wrapfig}
+\usepackage{rotating}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{textcomp}
+\usepackage{amssymb}
+\usepackage{capt-of}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=black}
+\setlength{\parindent}{0in}
+\usepackage[margin=1.2in]{geometry}
+\usepackage[spanish]{babel}
+\usepackage{mathtools}
+\usepackage{palatino}
+\usepackage{fancyhdr}
+\usepackage{sectsty}
+\usepackage{engord}
+\usepackage{cite}
+\usepackage{graphicx}
+\usepackage{setspace}
+\usepackage[compact]{titlesec}
+\usepackage[center]{caption}
+\usepackage{placeins}
+\usepackage{color}
+\usepackage{amsmath}
+\usepackage{minted}
+\usepackage{pdfpages}
+\titlespacing*{\subsection}{0pt}{5.5ex}{3.3ex}
+\titlespacing*{\section}{0pt}{5.5ex}{1ex}
+\author{Antonio Coín Castro\\ Luis Antonio Ortega Andrés}
+\date{\today}
+\title{Práctica Hadoop\\\medskip
+\large Procesamiento de Datos a Gran Escala}
+\begin{document}
+
+\maketitle
+
+\section*{Solución WordCount}
+
+Para hacer que el fichero \texttt{.jar} generado por el script tenga otro nombre debemos considerar un argumento mas (\texttt{\$2}) y realizar el siguiente cambio en la última línea de ejecución del script:
+
+\begin{minted}{sh}
+jar -cvf $2.jar -C ${file} .
+\end{minted}
+
+
+Para conseguir que el programa WordCount que hemos tomado no tenga en cuenta los signos de puntuación ni las mayúsculas y minúsculas, debemos realizar dos cambios distintos:
+\begin{itemize}
+  \item Para evitar los signos de puntuación, los añadimos al conjunto de delimitadores de palabras. Para ello configuramos el parámetro de delimitadores de la clase \texttt{StringTokenizer} de \texttt{Java}.
+  \item Para no distinguir mayúsculas y minúsculas, pasamos cada uno de los caracteres de cada palabra a minúscula utilizando la función \texttt{toLowerCase()}.
+\end{itemize}
+  \begin{minted}{java}
+        StringTokenizer itr = new StringTokenizer(value.toString()
+                   .toLowerCase(), " \n\t\r\f.,;:-¡¿?!()\"\'");
+\end{minted}
+
+\textbf{Comparar resultados de la aplicación desarrollada con la que
+se puede ejecutar directamente en los ejemplos hadoop mapreduce}
+
+
+\subsection*{Cuestiones planteadas}
+
+\textbf{Pregunta 1. }\emph{¿Dónde se crea hdfs? ¿Cómo se puede elegir su localización?}\\
+
+La localización del sistema de archivos HDFS la determina la variable \texttt{dfs.datanode.data.dir}, cuyo valor por defecto según la documentación de \href{https://hadoop.apache.org/docs/r2.4.1/hadoop-project-dist/hadoop-hdfs/hdfs-default.xml}{hadoop} es \texttt{file://\${hadoop.tmp.dir}/dfs/data}
+
+Este valor se puede cambiar en el archivo \texttt{hdfs-site.xml}:
+
+\begin{minted}{html}
+<property>
+  <name>dfs.datanode.data.dir</name>
+  <value>file:/hadoop/hdfs/datanode</value>
+</property>
+\end{minted}
+
+\textbf{Pregunta 2. }\emph{Si estás utilizando hdfs, ¿cómo puedes volver a ejecutar WordCount como si fuese single.node?}\\
+
+Para volver a configurar hadoop para funcionar como single.node debemos revertir los cambios que hicimos en los archivos de configuración para habilitar HDFS. Es decir, eliminar las secciones \texttt{fs.defaultFS} del archivo \texttt{core-site.xml} y \texttt{dfs.replication} de \texttt{hdfs-site.xml}.\\
+
+
+\textbf{Pregunta 3. }\emph{En el fragmento del Quijote, ¿cuales son las 10 palabras más utilizadas? ¿Cuántas veces aparecen el artículo ``el'' y la palabra ``dijo''}\\
+
+Para resumir la información utilizamos codigo \texttt{Python}. Creamos un dataframe de \texttt{Pandas} con la salida facilitada por hadoop:
+\begin{minted}{python}
+df = pd.read_csv("salida", delimiter="\t", header=None)
+\end{minted}
+
+Para obtener las 10 palabras más frecuentes ordenamos el dataframe:
+\begin{minted}{python}
+df.sort_values(by=1, ascending=False, inplace=True)
+print(df.head(10))
+\end{minted}
+
+Las 10 palabras mas utilizadas son: \texttt{que} (3055), \texttt{de} (2816), \texttt{y} (2585) \texttt{a} (1428), \texttt{la} (1423), \texttt{el} (1232), \texttt{en} (1155), \texttt{no} (916), \texttt{se} (753) y \texttt{los} (696).
+
+Para buscar el número de ocurrencias de una palabra, buscamos si fila correspondiente:
+\begin{minted}{python}
+print(df.loc[df[0] == "el"])
+print(df.loc[df[0] == "dijo"])
+\end{minted}
+
+La palabra \texttt{el} aparece un total de 1232 veces y la palabra \texttt{dijo} 272
+
+\end{document}
