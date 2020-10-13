@@ -65,13 +65,11 @@ Para conseguir que el programa WordCount que hemos tomado no tenga en cuenta los
                    .toLowerCase(), " \n\t\r\f.,;:-¡¿?!()\"\'");
 \end{minted}
 
-\textbf{Comparar resultados de la aplicación desarrollada con la que
-se puede ejecutar directamente en los ejemplos hadoop mapreduce}
-
+En la solución obtenida al ejecutar directamente los ejemplos hadoop map-reduce (archivo \texttt{Resultados\_ejemplo}) podemos ver como no se utilizan separadores correctos, diferenciando por ejemplo las palabras \texttt{que} y \texttt{(que}. Ante esto, los resultados obtenidos mediante la versión modificada resultan ser más precisos.
 
 \subsection*{Cuestiones planteadas}
 
-\textbf{Pregunta 1. }\emph{¿Dónde se crea hdfs? ¿Cómo se puede elegir su localización?}\\
+\textbf{Pregunta 1. }\textit{¿Dónde se crea hdfs? ¿Cómo se puede elegir su localización?}\\
 
 La localización del sistema de archivos HDFS la determina la variable \texttt{dfs.datanode.data.dir}, cuyo valor por defecto según la documentación de \href{https://hadoop.apache.org/docs/r2.4.1/hadoop-project-dist/hadoop-hdfs/hdfs-default.xml}{hadoop} es \texttt{file://\${hadoop.tmp.dir}/dfs/data}
 
@@ -89,7 +87,7 @@ Este valor se puede cambiar en el archivo \texttt{hdfs-site.xml}:
 Para volver a configurar hadoop para funcionar como single.node debemos revertir los cambios que hicimos en los archivos de configuración para habilitar HDFS. Es decir, eliminar las secciones \texttt{fs.defaultFS} del archivo \texttt{core-site.xml} y \texttt{dfs.replication} de \texttt{hdfs-site.xml}.\\
 
 
-\textbf{Pregunta 3. }\emph{En el fragmento del Quijote, ¿cuales son las 10 palabras más utilizadas? ¿Cuántas veces aparecen el artículo ``el'' y la palabra ``dijo''}\\
+\textbf{Pregunta 3. }\emph{En el fragmento del Quijote, ¿cuales son las 10 palabras más utilizadas? ¿Cuántas veces aparecen el artículo ``el'' y la palabra ``dijo''?}\\
 
 Para resumir la información utilizamos codigo \texttt{Python}. Creamos un dataframe de \texttt{Pandas} con la salida facilitada por hadoop:
 \begin{minted}{python}
@@ -102,7 +100,7 @@ df.sort_values(by=1, ascending=False, inplace=True)
 print(df.head(10))
 \end{minted}
 
-Las 10 palabras mas utilizadas son: \texttt{que} (3055), \texttt{de} (2816), \texttt{y} (2585) \texttt{a} (1428), \texttt{la} (1423), \texttt{el} (1232), \texttt{en} (1155), \texttt{no} (916), \texttt{se} (753) y \texttt{los} (696).
+Las 10 palabras mas utilizadas son: \texttt{que} (3055), \texttt{de} (2816), \texttt{y} (2585), \texttt{a} (1428), \texttt{la} (1423), \texttt{el} (1232), \texttt{en} (1155), \texttt{no} (916), \texttt{se} (753) y \texttt{los} (696).
 
 Para buscar el número de ocurrencias de una palabra, buscamos si fila correspondiente:
 \begin{minted}{python}
