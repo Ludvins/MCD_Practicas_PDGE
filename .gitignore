@@ -1,1 +1,7 @@
 resources/
+*.aux
+*.fls
+*.log
+*.out
+_minted*
+*.fdb_latexmk

@@ -19,7 +19,7 @@
 \usepackage{hyperref}
 \hypersetup{colorlinks=true, linkcolor=black}
 \setlength{\parindent}{0in}
-\usepackage[margin=1.2in]{geometry}
+\usepackage[margin=1.1in]{geometry}
 \usepackage[spanish]{babel}
 \usepackage{mathtools}
 \usepackage{palatino}
@@ -32,6 +32,11 @@
 \usepackage[compact]{titlesec}
 \usepackage[center]{caption}
 \usepackage{placeins}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+\usetikzlibrary{bayesnet}
+\usetikzlibrary{shapes.geometric}
+\usetikzlibrary{decorations.text}
 \usepackage{color}
 \usepackage{amsmath}
 \usepackage{minted}
@@ -46,52 +51,254 @@
 
 \maketitle
 
-\section*{Solución WordCount}
+\section*{Puesta a punto del entorno Hadoop}
 
-Para hacer que el fichero \texttt{.jar} generado por el script tenga otro nombre debemos considerar un argumento mas (\texttt{\$2}) y realizar el siguiente cambio en la última línea de ejecución del script:
+Una vez que hemos instalado Hadoop correctamente en el sistema, y hemos editado los archivos de configuración necesarios para activar el modo \textit{pseudo-distributed} con HDFS, iniciamos este último con la siguiente orden (partiendo del directorio de instalación de Hadoop):
+
+\begin{minted}{sh}
+sbin/start-dfs.sh
+\end{minted}
+
+También creamos un directorio en el sistema de archivos HDFS donde vamos a alojar nuestros conjuntos de datos:
+
+\begin{minted}{sh}
+hdfs dfs -mkdir /user/bigdata/p1
+\end{minted}
+
+No debemos olvidarnos de copiar nuestros archivos a HDFS con la orden \verb|-copyFromLocal|:
+
+\begin{minted}{sh}
+hdfs dfs -copyFromLocal <ruta_local> <ruta_hdfs>
+\end{minted}
+
+\section*{Compilación y ejecución}
+
+Utilizamos el script \verb|compile.sh| para compilar nuestro programa y obtener un \verb|.jar| listo para ser ejecutado. Añadimos una pequeña modificación al script original, permitiendo que el ejecutable generado tenga un nombre a nuestra elección. Para ello debemos considerar un argumento más (\texttt{\$2}) y realizar el siguiente cambio en la última línea del script:
 
 \begin{minted}{sh}
 jar -cvf $2.jar -C ${file} .
 \end{minted}
 
+El fichero completo quedaría entonces como sigue:
 
-Para conseguir que el programa WordCount que hemos tomado no tenga en cuenta los signos de puntuación ni las mayúsculas y minúsculas, debemos realizar dos cambios distintos:
-\begin{itemize}
-  \item Para evitar los signos de puntuación, los añadimos al conjunto de delimitadores de palabras. Para ello configuramos el parámetro de delimitadores de la clase \texttt{StringTokenizer} de \texttt{Java}.
-  \item Para no distinguir mayúsculas y minúsculas, pasamos cada uno de los caracteres de cada palabra a minúscula utilizando la función \texttt{toLowerCase()}.
-\end{itemize}
-  \begin{minted}{java}
-        StringTokenizer itr = new StringTokenizer(value.toString()
-                   .toLowerCase(), " \n\t\r\f.,;:-¡¿?!()\"\'");
+\begin{minted}{sh}
+#!/bin/bash
+file=$1
+name=$2
+HADOOP_CLASSPATH=$(hadoop classpath)
+rm -rf ${file}
+mkdir -p ${file}
+javac -classpath $HADOOP_CLASSPATH -d ${file} ${file}.java
+jar -cvf ${name}.jar -C ${file} .
 \end{minted}
 
-En la solución obtenida al ejecutar directamente los ejemplos hadoop map-reduce (archivo \texttt{Resultados\_ejemplo}) podemos ver como no se utilizan separadores correctos, diferenciando por ejemplo las palabras \texttt{que} y \texttt{(que}. Ante esto, los resultados obtenidos mediante la versión modificada resultan ser más precisos.
+Finalmente, podemos ejecutar nuestro programa en el entorno pseudo-distribuido con la siguiente orden:
 
-\subsection*{Cuestiones planteadas}
+\begin{minted}{sh}
+bin/hadoop <name>.jar <class_name> /user/bigdata/p1/<input_file> \
+  <output_dir>
+\end{minted}
+
+\section{Solución WordCount}
+
+Nos planteamos primero el problema de construir un programa para contar el número de apariciones de cada una de las palabras de un texto, que en este caso será un fragmento del Quijote (archivo \verb|Quijote.txt|).\\
+
+La estrategia a seguir dentro del paradigma de programación MapReduce será la siguiente. En primer lugar, dividimos el texto en unidades de un cierto tamaño, y pasamos cada uno de estos trozos a los Mappers. En la fase distribuida de Map, extraemos las palabras (que en principio suponemos separadas por espacios en blanco, tabulaciones o retornos de carro) y enviamos a los Reducers parejas \verb|(palabra, 1)|, indicando que esa palabra en concreto aparece una vez. Después, en la fase de Shuffle se juntan las parejas cuya clave es igual (en este caso, la clave es la propia palabra), y se agrupan sus segundos elementos en una lista. Finalmente, en la fase Reduce se reciben parejas \verb|(palabra, (1, 1, 1, ...))|, y lo que hacemos es sumar todos los elementos de la lista en el segundo elemento de la pareja, para obtener el número total de apariciones. Finalmente devolvemos parejas de palabras junto a su conteo.
+
+\begin{figure}[h!]
+  \centering
+  \begin{tikzpicture}[
+    node distance=0cm and 1.5cm,
+    mynode/.style={draw,text width=0.9cm,align=center}
+    ]
+    \node[text] at (-8, 3) {\textbf{Text}};
+    \node[draw,align=left] at (-8,0) (t) {En un\\ lugar de\\ de};
+
+    \node[text] at (-5, 3) {\textbf{Split}};
+    \node[draw,align=left] at (-5,1) (1) {En un};
+    \node[draw,align=left] at (-5,0) (2) {lugar de};
+    \node[draw,align=left] at (-5,-1) (3) {de};
+
+    \node[text] at (-2, 3) {\textbf{Mapping}};
+    \node[draw, align=left] at (-2,1.5) (21) {En, 1\\un, 1};
+    \node[draw, align=left] at (-2,0) (22) {lugar, 1\\de, 1};
+    \node[draw, align=left] at (-2,-1.5) (23) {de, 1};
+
+
+    \node[text] at (1, 3) {\textbf{Shuffling}};
+    \node[draw, align=left] at (1,1.5) (31){un, (1)};
+    \node[draw, align=left] at (1,0.5) (32){de, (1,1)};
+    \node[draw, align=left] at (1,-0.5) (33){En, (1)};
+    \node[draw, align=left] at (1,-1.5) (34){lugar, (1)};
+
+    \node[text] at (3, 3) {\textbf{Reducing}};
+    \node[draw, align=left] at (3,1.5) (41){un, 1};
+    \node[draw, align=left] at (3,0.5) (42){de, 2};
+    \node[draw, align=left] at (3,-0.5) (43){En, 1};
+    \node[draw, align=left] at (3,-1.5) (44){lugar, 1};
+
+    \node[text] at (6, 3) {\textbf{Result}};
+    \node[draw, align=left] at (6,0) (51) {En, 1\\ un, 1\\ lugar, 1\\de, 2};
+
+    \path (t) edge[-latex] (1)
+    (t) edge[-latex] (2)
+    (t) edge[-latex] (3)
+
+    (1) edge[-latex] (21)
+    (2) edge[-latex] (22)
+    (3) edge[-latex] (23)
+
+    (21) edge[-latex] (31)
+    (21) edge[-latex] (33)
+    (22) edge[-latex] (34)
+    (22) edge[-latex] (32)
+    (23) edge[-latex] (32)
+
+    (31) edge[-latex] (41)
+    (32) edge[-latex] (42)
+    (33) edge[-latex] (43)
+    (34) edge[-latex] (44)
+
+    (41) edge[-latex] (51)
+    (42) edge[-latex] (51)
+    (43) edge[-latex] (51)
+    (44) edge[-latex] (51)
+    ;
+
+    \end{tikzpicture}
+    \captionof{figure}{Esquema del programa WordCount.}\label{fig:bn_example}
+\end{figure}
+
+En una sintaxis más funcional, podríamos escribir el programa como
+
+\begin{minted}{scala}
+words_by_line = text.map { line => line.split(" ") }
+result = word_by_line.map { w => (w, 1) }
+                     .reduceByKey { (v1, v2) => v1 + v2 }
+\end{minted}
+
+Además de esto, modificamos el programa para que no tenga en cuenta mayúsculas y minúsculas, ni signos de puntuación. Veamos con detalle los principales elementos del programa en Java.
+
+\subsection*{Mapper}
+
+Definimos una clase para nuestro Mapper que extiende la interfaz homónima de Hadoop, proporcionando el formato de entrada y salida de nuestras parejas. En concreto, recibimos parejas \verb|(Object, Text)| (donde ignoramos la clave) y proporcionamos como salida parejas \verb|(Text, IntWritable)|. Las clases \verb|Text| e \verb|IntWritable| son clases de Hadoop que representan a los tipos de datos de Java \verb|String| e \verb|Int|, respectivamente \footnote{Estas clases optimizan y reducen el \textit{overhead} a la hora de \href{https://en.wikipedia.org/wiki/Serialization}{serializar} y deserializar objetos.}. En el método \verb|map| tokenizamos la entrada con \verb|StringTokenizer| (dividir en palabras), y para cada palabra guardamos en la salida la propia palabra junto con la constante $1$.
+
+\begin{minted}{java}
+public static class TokenizerMapper
+  extends Mapper<Object, Text, Text, IntWritable>{
+
+    private final static IntWritable one = new IntWritable(1);
+    private Text word = new Text();
+
+    public void map(Object key, Text value, Context context)
+      throws IOException, InterruptedException {
+      StringTokenizer itr =
+        new StringTokenizer(value.toString(), " \n\t\r\f");
+      while (itr.hasMoreTokens()) {
+          word.set(itr.nextToken());
+          context.write(word, one);
+      }
+    }
+  }
+\end{minted}
+
+Para conseguir que el programa no tenga en cuenta los signos de puntuación ni las mayúsculas y minúsculas, debemos realizar dos cambios distintos:
+\begin{itemize}
+  \item Para evitar los signos de puntuación, los añadimos al conjunto de delimitadores de palabras. Para ello configuramos el parámetro de delimitadores del constructor de la clase \texttt{StringTokenizer}.
+  \item Para no distinguir mayúsculas y minúsculas, pasamos cada uno de los caracteres de cada palabra a minúscula utilizando la función \texttt{toLowerCase()}.
+\end{itemize}
+
+Así, la línea que modificamos queda como sigue:
+\begin{minted}{java}
+StringTokenizer itr = new StringTokenizer(
+  value.toString().toLowerCase(), " \n\t\r\f.,;:-¡¿?!()\"\'");
+\end{minted}
+
+\subsection*{Reducer}
+
+En el Reducer recibimos parejas de la forma  \verb|(Text, Iterable<IntWritable>)| con las palabras y una lista con '$1$'s (uno por cada aparición contabilizada), y devolvemos parejas \verb|(Text, IntWritable)| con las palabras y el número total de apariciones. Para calcular este último número simplemente sumamos los elementos de la lista asociada a cada palabra.
+
+\begin{minted}{java}
+public static class IntSumReducer extends
+  Reducer<Text,IntWritable,Text,IntWritable> {
+    private IntWritable result = new IntWritable();
+
+    public void reduce(Text key, Iterable<IntWritable> values,
+      Context context) throws IOException, InterruptedException {
+        int sum = 0;
+        for (IntWritable val : values) {
+            sum += val.get();
+        }
+        result.set(sum);
+        context.write(key, result);
+    }
+}
+\end{minted}
+
+En este caso no hay que realizar ninguna modificación para incluir los cambios que queríamos.
+
+\subsection*{Main}
+
+Desde la función principal solo tenemos que establecer la configuración apropiada del entorno de trabajo, especificando el nombre de las clases que hemos creado y que implementan las fases de Map y Reduce. También es necesario especificar el formato final de salida de las parejas \verb|(clave, valor)|, que como ya dijimos será \verb|(Text, IntWritable)|. También añadimos las rutas del fichero de entrada y del directorio de salida, e invocamos el trabajo (\verb|Job|) que hemos creado.
+
+\begin{minted}{java}
+public static void main(String[] args) throws Exception {
+    Job job = new Job(conf, "wordcount");
+    job.setJarByClass(WordCount.class);
+    job.setMapperClass(TokenizerMapper.class);
+    job.setReducerClass(IntSumReducer.class);
+    job.setOutputKeyClass(Text.class);
+    job.setOutputValueClass(IntWritable.class);
+
+    FileInputFormat.addInputPath(job, new Path(args[0]));
+    FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+    System.exit(job.waitForCompletion(true) ? 0 : 1);
+  }
+\end{minted}
+
+
+
+\subsection{Conclusiones}
+
+Los resultados de ejecución de nuestro programa sin modificar se encuentran en el archivo \verb|wc_orig|, mientras que la salida del programa modificado está en el archivo \verb|wc_modif|. Podemos ver como en el primero aparecen repetidas varias palabras, ya sea por capitalización de la primera letra cuando comienzan oraciones, o porque se contabilizan los signos de puntuación. Sin embargo, en el segundo archivo esto ya no ocurre.\\
+
+En la solución obtenida al ejecutar directamente los ejemplos de \verb|hadoop-map-reduce| (archivo \texttt{wc\_example}) podemos ver como no se utilizan separadores correctos, diferenciando por ejemplo las palabras \texttt{que} y \texttt{(que}. Ante esto, los resultados obtenidos mediante la versión modificada resultan ser más precisos. Concretamente, en la versión de ejemplo el número total de palabras distintas que se contabilizan es de 10533, mientras que en la versión modificada este número desciende hasta 7492.\\
+
+La versión de ejemplo y nuestra versión no modificada coinciden en que ambas detectan como palabras diferentes algunas que deberían ser consideradas la misma. Además, podemos ver que el número total de palabras contabilizadas es el mismo en ambas versiones.
+
+\subsection{Cuestiones planteadas}
 
 \textbf{Pregunta 1. }\textit{¿Dónde se crea hdfs? ¿Cómo se puede elegir su localización?}\\
 
-La localización del sistema de archivos HDFS la determina la variable \texttt{dfs.datanode.data.dir}, cuyo valor por defecto según la documentación de \href{https://hadoop.apache.org/docs/r2.4.1/hadoop-project-dist/hadoop-hdfs/hdfs-default.xml}{hadoop} es \texttt{file://\${hadoop.tmp.dir}/dfs/data}
-
-Este valor se puede cambiar en el archivo \texttt{hdfs-site.xml}:
+La localización del sistema de archivos HDFS la determina la variable \texttt{dfs.datanode.data.dir}, cuyo valor por defecto es \verb|file://${hadoop.tmp.dir}/dfs/data| según la \href{https://hadoop.apache.org/docs/r2.4.1/hadoop-project-dist/hadoop-hdfs/hdfs-default.xml}{documentación de Hadoop}. Este valor se puede cambiar en el archivo \texttt{hdfs-site.xml}:
 
 \begin{minted}{html}
 <property>
   <name>dfs.datanode.data.dir</name>
-  <value>file:/hadoop/hdfs/datanode</value>
+  <value>file://hadoop/hdfs/datanode</value>
 </property>
 \end{minted}
 
 \textbf{Pregunta 2. }\emph{Si estás utilizando hdfs, ¿cómo puedes volver a ejecutar WordCount como si fuese single.node?}\\
 
-Para volver a configurar hadoop para funcionar como single.node debemos revertir los cambios que hicimos en los archivos de configuración para habilitar HDFS. Es decir, eliminar las secciones \texttt{fs.defaultFS} del archivo \texttt{core-site.xml} y \texttt{dfs.replication} de \texttt{hdfs-site.xml}.\\
+Para volver a configurar Hadoop para funcionar como \textit{single.node} debemos revertir los cambios que hicimos en los archivos de configuración para habilitar HDFS. Es decir, eliminar las secciones \texttt{fs.defaultFS} del archivo \texttt{core-site.xml} y \texttt{dfs.replication} de \texttt{hdfs-site.xml}.\\
 
+Otra opción para mantener activo HDFS pero ejecutar nuestro programa con archivos de entrada locales es especificar en el código fuente que se puede recibir como entrada un archivo del sistema de archivos local y no de HDFS. Esto podemos lograrlo por ejemplo empleando la clase \verb|FileSystem|:
+
+\begin{minted}{java}
+Configuration conf = new Configuration();
+Path path = new Path(args[0]);
+FileSystem fs = FileSystem.get(path.toUri(), conf);
+\end{minted}
+
+Y entonces al ejecutar el programa podemos especificar como argumento archivos locales con la ruta \verb|file://path/to/file| y archivos en HDFS con \verb|hdfs://path/to/file|.\\
 
 \textbf{Pregunta 3. }\emph{En el fragmento del Quijote, ¿cuales son las 10 palabras más utilizadas? ¿Cuántas veces aparecen el artículo ``el'' y la palabra ``dijo''?}\\
 
-Para resumir la información utilizamos codigo \texttt{Python}. Creamos un dataframe de \texttt{Pandas} con la salida facilitada por hadoop:
+Para resumir la información del archivo de salida utilizamos código \texttt{Python} (archivo \verb|utils.py|). En primer lugar, creamos un \verb|dataframe| de \texttt{Pandas} con la salida facilitada por Hadoop:
 \begin{minted}{python}
-df = pd.read_csv("salida", delimiter="\t", header=None)
+df = pd.read_csv("wc_modif", delimiter="\t", header=None)
 \end{minted}
 
 Para obtener las 10 palabras más frecuentes ordenamos el dataframe:
@@ -100,14 +307,14 @@ df.sort_values(by=1, ascending=False, inplace=True)
 print(df.head(10))
 \end{minted}
 
-Las 10 palabras mas utilizadas son: \texttt{que} (3055), \texttt{de} (2816), \texttt{y} (2585), \texttt{a} (1428), \texttt{la} (1423), \texttt{el} (1232), \texttt{en} (1155), \texttt{no} (916), \texttt{se} (753) y \texttt{los} (696).
+Las 10 palabras mas utilizadas son: \texttt{que} (3055), \texttt{de} (2816), \texttt{y} (2585), \texttt{a} (1428), \texttt{la} (1423), \texttt{el} (1232), \texttt{en} (1155), \texttt{no} (916), \texttt{se} (753) y \texttt{los} (696).\\
 
-Para buscar el número de ocurrencias de una palabra, buscamos si fila correspondiente:
+Para buscar el número de ocurrencias de una palabra, buscamos su fila correspondiente:
 \begin{minted}{python}
 print(df.loc[df[0] == "el"])
 print(df.loc[df[0] == "dijo"])
 \end{minted}
 
-La palabra \texttt{el} aparece un total de 1232 veces y la palabra \texttt{dijo} 272
+La palabra \texttt{el} aparece un total de 1232 veces y la palabra \texttt{dijo} aparece 272 veces.
 
 \end{document}
