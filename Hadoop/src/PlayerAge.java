@@ -1,4 +1,3 @@
-//package org.apache.hadoop.examples;
 package uam;
 import java.io.IOException;
 import java.util.*;
@@ -10,7 +9,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
-public class MeanAge {
+public class PlayerAge {
 
   public static class TokenizerMapper extends Mapper<Object, Text, Text, IntWritable>{
 
@@ -56,8 +55,8 @@ public class MeanAge {
 
 
     @SuppressWarnings("deprecation")
-    Job job = new Job(conf, "wordcount");
-    job.setJarByClass(MeanAge.class);
+    Job job = new Job(conf, "player_age");
+    job.setJarByClass(PlayerAge.class);
     job.setMapperClass(TokenizerMapper.class);
     job.setReducerClass(MeanReducer.class);
     job.setOutputKeyClass(Text.class);

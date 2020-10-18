@@ -1,4 +1,3 @@
-//package org.apache.hadoop.examples;
 package uam;
 import java.io.IOException;
 import java.util.*;
@@ -13,10 +12,10 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 public class WordCount {
 
   public static class TokenizerMapper extends Mapper<Object, Text, Text, IntWritable>{
-    
+
     private final static IntWritable one = new IntWritable(1);
     private Text word = new Text();
-      
+
     public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
       StringTokenizer itr = new StringTokenizer(value.toString().toLowerCase(), " \n\t\r\f.,;:-¡¿?!()\"\'");
       while (itr.hasMoreTokens()) {
@@ -25,7 +24,7 @@ public class WordCount {
       }
     }
   }
-  
+
   public static class IntSumReducer extends Reducer<Text,IntWritable,Text,IntWritable> {
     private IntWritable result = new IntWritable();
 
