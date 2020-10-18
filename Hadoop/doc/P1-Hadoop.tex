@@ -68,7 +68,7 @@ hdfs dfs -mkdir /user/bigdata/p1
 No debemos olvidarnos de copiar nuestros archivos a HDFS con la orden \verb|-copyFromLocal|:
 
 \begin{minted}{sh}
-hdfs dfs -copyFromLocal <ruta_local> <ruta_hdfs>
+hdfs dfs -copyFromLocal <ruta_local> /user/bigdata/p1
 \end{minted}
 
 \section*{Compilación y ejecución}
@@ -99,7 +99,7 @@ bin/hadoop <name>.jar <class_name> /user/bigdata/p1/<input_file> \
   <output_dir>
 \end{minted}
 
-\section{Solución WordCount}
+\section{Programa WordCount}
 
 Nos planteamos primero el problema de construir un programa para contar el número de apariciones de cada una de las palabras de un texto, que en este caso será un fragmento del Quijote (archivo \verb|Quijote.txt|).\\
 
@@ -172,7 +172,7 @@ La estrategia a seguir dentro del paradigma de programación MapReduce será la 
 En una sintaxis más funcional, podríamos escribir el programa como
 
 \begin{minted}{scala}
-words_by_line = text.map { line => line.split(" ") }
+words_by_line = text.flatMap { line => line.split(" ") }
 result = word_by_line.map { w => (w, 1) }
                      .reduceByKey { (v1, v2) => v1 + v2 }
 \end{minted}
@@ -276,23 +276,22 @@ La localización del sistema de archivos HDFS la determina la variable \texttt{d
 \begin{minted}{html}
 <property>
   <name>dfs.datanode.data.dir</name>
-  <value>file://hadoop/hdfs/datanode</value>
+  <value>file://${hadoop.tmp.dir}/dfs/data</value>
 </property>
 \end{minted}
+
+Además, la variable \verb|${hadoop.tmp.dir}| se puede consultar y modificar en \verb|core-site.xml|,y tiene como valor por defecto \verb|/tmp/hadoop-${user.name}|.\\
 
 \textbf{Pregunta 2. }\emph{Si estás utilizando hdfs, ¿cómo puedes volver a ejecutar WordCount como si fuese single.node?}\\
 
 Para volver a configurar Hadoop para funcionar como \textit{single.node} debemos revertir los cambios que hicimos en los archivos de configuración para habilitar HDFS. Es decir, eliminar las secciones \texttt{fs.defaultFS} del archivo \texttt{core-site.xml} y \texttt{dfs.replication} de \texttt{hdfs-site.xml}.\\
 
-Otra opción para mantener activo HDFS pero ejecutar nuestro programa con archivos de entrada locales es especificar en el código fuente que se puede recibir como entrada un archivo del sistema de archivos local y no de HDFS. Esto podemos lograrlo por ejemplo empleando la clase \verb|FileSystem|:
+Otra opción para mantener activo HDFS pero ejecutar nuestro programa con archivos de entrada locales es especificar en la ruta de los archivos que pasamos al programa si son locales o están en HDFS. Para ello podemos añadir a nuestras rutas el prefijo \verb|file://| para archivos locales y el prefijo \verb|hdfs://| para archivos en HDFS (debemos proporcionar rutas absolutas). Así, para ejecutar el programa WordCount con archivos de entrada y salida en el directorio local, usaríamos la orden:
 
-\begin{minted}{java}
-Configuration conf = new Configuration();
-Path path = new Path(args[0]);
-FileSystem fs = FileSystem.get(path.toUri(), conf);
+\begin{minted}{sh}
+bin/hadoop jar WordCount.jar uam.WordCount \
+  file:///opt/hadoop/p1/Quijote.txt file:///opt/hadoop/p1/out
 \end{minted}
-
-Y entonces al ejecutar el programa podemos especificar como argumento archivos locales con la ruta \verb|file://path/to/file| y archivos en HDFS con \verb|hdfs://path/to/file|.\\
 
 \textbf{Pregunta 3. }\emph{En el fragmento del Quijote, ¿cuales son las 10 palabras más utilizadas? ¿Cuántas veces aparecen el artículo ``el'' y la palabra ``dijo''?}\\
 
@@ -316,5 +315,126 @@ print(df.loc[df[0] == "dijo"])
 \end{minted}
 
 La palabra \texttt{el} aparece un total de 1232 veces y la palabra \texttt{dijo} aparece 272 veces.
+
+\section{Programa PlayerAge}
+
+En esta sección planteamos resolver un problema distinto al de contar palabras. Utilizaremos el \textit{dataset} \verb|players.csv| proporcionado, donde tenemos información de algunos jugadores de la Premier League, sus edades y el equipo al que pertenecen. Nuestro objetivo será calcular para cada equipo una serie de estadísticos sobre la edad. En concreto, calcularemos de forma distribuida la media de edad, la edad mínima y la edad máxima de los jugadores de cada equipo.\\
+
+La idea para el cálculo distribuido será similar a la de \verb|WordCount|. En el archivo \verb|players.csv| cada línea representa un jugador, donde en la primera columna encontramos su nombre, en la segunda el equipo al que pertenece y en la tercera su edad, separados por comas. Lo que haremos será distribuir las líneas en Mappers, donde devolveremos para cada jugador una pareja \verb@(equipo, edad)@ (ahora la clave es el equipo). Posteriormente, en el Reducer calcularemos la media, el mínimo y el máximo con los métodos usuales (sumas y comparaciones), y devolveremos una pareja \verb@(equipo, (media, minimo, maximo))@.\\
+
+Reutilizaremos la mayor parte del código Java desarrollado en la sección anterior, por lo que solo comentaremos aquí las partes en las que hacemos cambios. El código completo se puede consultar en el archivo \verb|PlayerAge.java|. Para subir los archivos, compilar y ejecutar podemos seguir los mismos pasos que con \verb|WordCount|, es decir:
+
+\begin{minted}{sh}
+$ bin/hdfs dfs -copyFromLocal players.csv /user/bigdata/p1
+$ ./compile.sh PlayerAge PlayerAge
+$ bin/hadoop jar PlayerAge.jar uam.PlayerAge \
+  /user/bigdata/p1/players.csv /user/bigdata/p1/out_player
+\end{minted}
+
+\subsection*{Mapper}
+
+En la clase Mapper solo debemos cambiar con respecto al programa anterior que ahora en vez de devolver siempre la constante 1, devolvemos la edad del jugador en cuestión. Para ello declaramos una variable de clase que será el \textit{wrapper} de este número, y le daremos valor cuando extraigamos la edad del jugador, previamente convertida a entero.
+
+\begin{minted}{java}
+private Text team = new Text();
+private IntWritable age = new IntWritable();
+\end{minted}
+
+En este caso no necesitamos tokenizar toda la entrada, ya que solo nos interesan las tres primeras columnas. Utilizamos el método \verb|split| de la clase \verb|String| que nos permite accesos aleatorios a las palabras, y escribimos en el \verb|Context| el nombre del equipo y la edad del jugador.
+
+\begin{minted}{java}
+public void map(Object key, Text value, Context context)
+  throws IOException, InterruptedException {
+    String[] split = value.toString().split(",");
+    team.set(split[1]);
+    age.set(Integer.parseInt(split[2]));
+    context.write(team, age);
+}
+\end{minted}
+
+\subsection*{Reducer}
+
+En el Reducer recibimos ahora parejas \verb|(equipo, (edad1, edad2, ...))|, donde el segundo elemento es una lista con las edades de todos los jugadores del equipo en cuestión. Definimos primero las variables que contendrán la media, el mínimo y el máximo:
+
+\begin{minted}{java}
+private IntWritable meanAge = new IntWritable();
+private IntWritable minAge = new IntWritable();
+private IntWritable maxAge = new IntWritable();
+\end{minted}
+
+En la función \verb|reduce| simplemente calculamos la media, el mínimo y el máximo de la lista que recibimos, y lo guardamos en la salida que hemos preparado.
+
+\begin{minted}{java}
+public void reduce(Text key, Iterable<IntWritable> values, Context context)
+  throws IOException, InterruptedException {
+    int ageSum = 0;
+    int count = 0;
+    int _minAge = 200;
+    int _maxAge = 0;
+
+    for (IntWritable val : values) {
+        int value = val.get();
+        ageSum += value;
+        count++;
+        if (value > _maxAge){
+            _maxAge = value;
+        }
+        if (value < _minAge){
+            _minAge = value;
+        }
+    }
+
+    meanAge.set(ageSum/count);
+    minAge.set(_minAge);
+    maxAge.set(_maxAge);
+}
+\end{minted}
+
+Finalmente, para devolver parejas en el formato deseado, creamos primero una lista de \verb|IntWritable| que contenga nuestros tres valores calculados, y luego las escribimos en el \verb|Context|.
+
+\begin{minted}{java}
+IntWritable result[] = {meanAge, minAge, maxAge};
+context.write(key, Arrays.asList(result));
+\end{minted}
+
+Nótese que para poder hacer esto hemos tenido que modificar la cabecera de la clase para especificar el formato de salida:
+
+\begin{minted}{java}
+public static class MeanReducer
+  extends Reducer<Text,IntWritable,Text,Iterable<IntWritable> > {...}
+\end{minted}
+
+\subsection*{Main}
+
+En la función principal tan solo debemos cambiar el nombre de las clases que actúan ahora como Mapper y Reducer.
+
+\subsection{Conclusiones}
+
+Tras ejecutar nuestro programa, obtenemos un archivo de salida (\verb|player_age|) en el que en cada línea tenemos el nombre de un equipo, y los tres valores que nos interesaban sobre él: la media de edad, la edad del jugador más jóven y la edad del jugador más viejo.\\
+
+\begin{minted}{sh}
+Arsenal	[26, 21, 35]
+Bournemouth	[26, 20, 37]
+Brighton+and+Hove	[28, 23, 36]
+Burnley	[27, 24, 35]
+Chelsea	[27, 21, 35]
+Crystal+Palace	[28, 21, 38]
+Everton	[26, 19, 36]
+Huddersfield	[26, 20, 35]
+Leicester+City	[27, 20, 33]
+Liverpool	[24, 17, 31]
+Manchester+City	[27, 20, 34]
+Manchester+United	[25, 19, 35]
+Newcastle+United	[26, 21, 34]
+Southampton	[24, 20, 32]
+Stoke+City	[28, 18, 36]
+Swansea	[27, 19, 34]
+Tottenham	[25, 21, 33]
+Watford	[28, 21, 36]
+West+Brom	[28, 18, 37]
+West+Ham	[27, 21, 33]
+\end{minted}
+
+Como último comentario, cabe destacar que hemos aprovechado en el Reducer para calcular a la vez los tres estadísticos que queríamos, pero para ello ha sido necesario cambiar el tipo de retorno en la cabecera de nuestra clase \verb|MeanReducer| cuando extendemos la clase \verb|Reducer|.
 
 \end{document}

@@ -19,12 +19,12 @@ public class PlayerAge {
       public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
           String[] split = value.toString().split(",");
           team.set(split[1]);
-          age.set(split[2]);
+          age.set(Integer.parseInt(split[2]));
           context.write(team, age);
       }
   }
 
-  public static class MeanReducer extends Reducer<Text,IntWritable,Text,IntWritable,IntWritable, IntWritable>{
+  public static class MeanReducer extends Reducer<Text,IntWritable,Text,Iterable<IntWritable> >{
     private IntWritable meanAge = new IntWritable();
     private IntWritable minAge = new IntWritable();
     private IntWritable maxAge = new IntWritable();
@@ -32,21 +32,27 @@ public class PlayerAge {
   public void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
       int ageSum = 0;
       int count = 0;
-      int minAge = 200;
-      int maxAge = 0;
+      int _minAge = 200;
+      int _maxAge = 0;
+
       for (IntWritable val : values) {
-        value = val.get();
-        age_sum += value;
+        int value = val.get();
+        ageSum += value;
         count++;
-        if (value > maxAge){
-          maxAge = value;
+        if (value > _maxAge){
+          _maxAge = value;
         }
-        if (value < minAge){
-          minAge = value;
+        if (value < _minAge){
+          _minAge = value;
         }
       }
       meanAge.set(ageSum/count);
-      context.write(key, result, minAge, maxAge);
+      minAge.set(_minAge);
+      maxAge.set(_maxAge);
+
+      // Create a list of IntWritable as output
+      IntWritable result[] = {meanAge, minAge, maxAge};
+      context.write(key, Arrays.asList(result));
     }
   }
 
